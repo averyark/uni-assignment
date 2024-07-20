@@ -205,7 +205,7 @@ CREATE TABLE Sales(
 )
 
 Insert Into Sales
-(MemberID, OrderStatus, PaymentDetail, PaymentDate, ShippingDate, DeliveryDate)
+    (MemberID, OrderStatus, PaymentDetail, PaymentDate, ShippingDate, DeliveryDate)
 Values
     (1, 'Shipped', 'Debit Card', '2024-06-28', '2024-06-30', Null),
     (2, 'Received', 'E-Wallet', '2023-09-10', '2023-09-11', '2023-09-14'),
@@ -228,7 +228,7 @@ CREATE TABLE SalesBook(
     BookID INT FOREIGN KEY REFERENCES Book(BookID) NOT NULL,
     Quantity INT NOT NULL DEFAULT 1,
 	Rating INT,
-	Feedback nvarchar(200)
+	Feedback NVARCHAR(200)
 )
 
 INSERT INTO SalesBook
@@ -293,29 +293,36 @@ Values
     (12, 4, 1, '2024-01-21'),
     (13, 3, 1, '2024-02-22')
 
--- i. Test Fail - BETWEEN DATE is inclusive, so this statement would range up to 2025 - 21:19 20-07-2024 Alwin
+-- i. 
+-- Test Fail - BETWEEN DATE is inclusive, so this statement would range up to 2025 
+-- 21:19 20-07-2024 
 SELECT M.FirstName, M.LastName, COUNT(*) AS TotalOrdersIn2024 FROM Member M JOIN Sales S ON M.MemberID = S.MemberID
     WHERE S.PaymentDate BETWEEN '2024-01-01' AND '2025-01-01'
     GROUP BY M.FirstName, M.LastName
--- i. Test Pass - 21:23 20-07-2024 Alwin
+
+-- i. 
+-- Test Pass 
+-- 21:23 20-07-2024 
 SELECT M.FirstName, M.LastName, COUNT(*) AS TotalOrdersIn2024 FROM Member M JOIN Sales S ON M.MemberID = S.MemberID
     WHERE S.PaymentDate BETWEEN '2024-01-01' AND '2024-12-31'
     GROUP BY M.FirstName, M.LastName
 
-
--- ii. Test Pass - 21:19 20-07-2024 Alwin
+-- ii. 
+-- Test Pass -- 21:19 20-07-2024 
 SELECT Member.FirstName, Member.LastName, Member.ContactNumber, Member.EmailAddress, COUNT(*) AS UndeliveredOrder
     FROM Member JOIN Sales ON Member.MemberID = Sales.MemberID WHERE Sales.OrderStatus != 'Delivered' AND Sales.OrderStatus != 'Received' 
     GROUP BY FirstName, LastName, ContactNumber, EmailAddress
 
 -- iii.
+-- Test Pass -- 21:41 20-07-2024
 SELECT Name, COUNT(*) AS QuantitySold, AVG(CAST(Rating AS DECIMAL(10,2))) AS AverageRating, COUNT(Feedback) AS FeedbackCount
-    FROM Book JOIN Sales ON Book.BookID = Sales.BookID 
+    FROM Book JOIN SalesBook ON Book.BookID = SalesBook.BookID
+    JOIN Sales ON SalesBook.SaleID = Sales.SaleID
     WHERE Sales.PaymentDetail IS NOT NULL AND Sales.PaymentDate IS NOT NULL
     GROUP BY Name
 
 --iv. Find the book(s) that written by more than 2 authors. Display the name of the book and name of the authors.
-
+-- Test Pass -- 21:41 20-07-2024
 SELECT b.BookID, b.Name,
     STUFF((SELECT ', ' + a.Name
     FROM BookAuthor ba
@@ -325,16 +332,24 @@ SELECT b.BookID, b.Name,
     FROM Book b
     JOIN BookAuthor ba ON b.BookID = ba.BookID
     GROUP BY b.BookID, b.Name
-    HAVING COUNT(ba.AuthorID) > 2;
+    HAVING COUNT(ba.AuthorID) > 2
 
 -- v.
+-- Test Fail -- 21:44 20-07-2024
 SELECT Member.MemberID, Member.FirstName, Member.LastName, (SELECT Name FROM Book WHERE Book.BookID = Sales.BookID) AS BookName
     FROM Member JOIN Sales ON Member.MemberID = Sales.MemberID
     WHERE Sales.OrderStatus = 'Shopping Cart'
     ORDER BY MemberID ASC
     --GROUP BY Member.MemberID
 
+-- Test Pass -- 21:46 20-07-2024
+SELECT Member.MemberID, Member.FirstName, Member.LastName, (SELECT Name FROM Book WHERE Book.BookID = ShoppingCart.BookID) AS BookName
+    FROM Member JOIN ShoppingCart ON Member.MemberID = ShoppingCart.MemberID
+    ORDER BY MemberID ASC
+    --GROUP BY Member.MemberID
+
 -- vi.
+-- Test Fail -- 21:47 20-07-2024
 SELECT MONTH(S.PaymentDate) AS month, SUM(I.Quantity) AS total_sales
     FROM SaleItem I
     JOIN Sales S ON I.SaleID = S.SaleID
@@ -342,38 +357,80 @@ SELECT MONTH(S.PaymentDate) AS month, SUM(I.Quantity) AS total_sales
     GROUP BY MONTH(S.PaymentDate)
     ORDER BY month
 
+-- Test Pass -- 21:49 20-07-2024
+SELECT MONTH(Sales.PaymentDate) AS Month, SUM(SalesBook.Quantity) AS total_sales
+    FROM SalesBook
+    JOIN Sales ON SalesBook.SaleID = Sales.SaleID
+    WHERE YEAR(Sales.PaymentDate) = 2023
+    GROUP BY MONTH(Sales.PaymentDate)
+    ORDER BY Month
+
 --vii Find the bestselling book(s) per genre. Display the name and description of the book(s). 
+-- Test Fail -- 21:50 20-07-2024
 SELECT B.Genre, B.Name, B.Description FROM Book B
-    JOIN Sales S ON B.BookID = S.BookID
-    GROUP BY B.Genre, B.Name, B.Description
-    HAVING COUNT(S.OrderID) = (
-        SELECT MAX(BookSales) 
+JOIN Sales S ON B.BookID = S.BookID
+GROUP BY B.Genre, B.Name, B.Description
+HAVING COUNT(S.OrderID) = (SELECT MAX(BookSales) 
+FROM (SELECT COUNT(S1.OrderID) AS BookSales FROM Book B1
+JOIN Sales S1 ON B1.BookID = S1.BookID
+WHERE B1.Genre = B.Genre
+GROUP BY B1.BookID) AS GenreSales
+)
+
+-- Test Pass -- 22:15 20-07-2024
+SELECT Genre, Name, Description FROM Book
+    JOIN SalesBook ON Book.BookID = SalesBook.BookID
+    GROUP BY Genre, Book.Name, Book.Description
+    HAVING COUNT(*) = (
+        SELECT MAX(BookSales)
         FROM (
-            SELECT COUNT(S1.OrderID) AS BookSales FROM Book B1
-            JOIN Sales S1 ON B1.BookID = S1.BookID
-            WHERE B1.Genre = B.Genre
-            GROUP BY B1.BookID
+            SELECT COUNT(*) AS BookSales FROM Book B
+            JOIN SalesBook S ON B.BookID = S.BookID
+            WHERE B.Genre = B.Genre
+            GROUP BY B.BookID
         ) AS GenreSales
     )
 
 -- viii.
-Select * From Book
-    SELECT B.Name, B.Description FROM Book B
-    JOIN SaleItem I ON B.BookID = I.BookID
-    JOIN (SELECT BookID, MIN(Rating) AS min_rating FROM SaleItem GROUP BY BookID)
-    min_ratings ON I.BookID = min_ratings.BookID AND I.Rating = min_ratings.min_rating
-    JOIN (SELECT B.Genre, MIN(I.Rating) AS GenreMinRating
-    FROM Book B JOIN SaleItem I ON B.BookID = I.BookID GROUP BY B.Genre)
-    genre_min ON B.genre = genre_min.genre AND I.Rating = genre_min.GenreMinRating
+-- Test Fail -- 22:37 20-07-2024
+SELECT B.Name, B.Description FROM Book B
+JOIN SaleItem I ON B.BookID = I.BookID
+JOIN (SELECT BookID, MIN(Rating) AS min_rating FROM SaleItem GROUP BY BookID)
+min_ratings ON I.BookID = min_ratings.BookID AND I.Rating = min_ratings.min_rating
+JOIN (SELECT B.Genre, MIN(I.Rating) AS GenreMinRating
+FROM Book B JOIN SaleItem I ON B.BookID = I.BookID GROUP BY B.Genre)
+genre_min ON B.genre = genre_min.genre AND I.Rating = genre_min.GenreMinRating
 
+-- Test Fail -- 22:39 20-07-2024
+SELECT B.Genre, B.Name, B.Description FROM Book B
+JOIN SalesBook I ON B.BookID = I.BookID
+JOIN (SELECT BookID, MIN(Rating) AS min_rating FROM SalesBook GROUP BY BookID)
+min_ratings ON I.BookID = min_ratings.BookID AND I.Rating = min_ratings.min_rating
+JOIN (SELECT B.Genre, MIN(I.Rating) AS GenreMinRating
+FROM Book B JOIN SalesBook I ON B.BookID = I.BookID GROUP BY B.Genre)
+genre_min ON B.genre = genre_min.genre AND I.Rating = genre_min.GenreMinRating
 
---ix Find the total number of books ordered by store manager from each publisher.  
+--ix Find the total number of books ordered by store manager from each publisher. 
+-- Test Fail -- 22:41 20-07-2024
 SELECT SUM(Amount) AS TotalNumberOfBooks, PublisherID AS PublisherID FROM Orders
 GROUP BY PublisherID
 
---x. Find the number(s) of books per genre published by each publisher.
+-- Test Pass -- 22:51 20-07-2024
+SELECT *, (
+        SELECT COUNT(*) FROM BookOrder JOIN Book ON BookOrder.BookID = Book.BookID AND Book.PublisherID = Publisher.PublisherID
+    ) AS TotalBooksOrderByStoreManager
+    FROM Publisher
 
+--x. Find the number(s) of books per genre published by each publisher.
+-- Test Fail -- 22:52 20-07-2024
 SELECT p.Name AS PublisherName, b.Genre,
-    COUNT(b.BookID) AS NumberOfBooks FROM Publisher p
-    JOIN Book b ON p.PublisherID = b.PublisherID
-    GROUP BY p.Name, b.Genre
+COUNT(b.BookID) AS NumberOfBooks FROM Publisher p
+JOIN Book b ON p.PublisherID = b.PublisherID
+GROUP BY p.Name, b.Genre
+
+--x. Find the number(s) of books per genre published by each publisher.
+-- Test Pass -- 22:52 20-07-2024
+SELECT p.Name AS PublisherName, b.Genre,
+COUNT(b.BookID) AS NumberOfBooks FROM Publisher p
+JOIN Book b ON p.PublisherID = b.PublisherID
+GROUP BY p.Name, b.Genre
